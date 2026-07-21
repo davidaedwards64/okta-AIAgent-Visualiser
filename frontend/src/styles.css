@@ -1,0 +1,189 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #1a1a1a;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.org-connect-form {
+  width: 420px;
+  padding: 32px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.org-connect-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.org-connect-form input {
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.org-connect-form button[type="submit"] {
+  margin-top: 8px;
+  padding: 10px;
+  background: #4c6fff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.org-connect-form button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #4c6fff;
+  padding: 0;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.optional-field {
+  font-weight: 400 !important;
+}
+
+.error-banner {
+  background: #fdecea;
+  color: #a1291b;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+.app-title {
+  font-weight: 700;
+}
+
+.org-domain {
+  color: #666;
+  font-size: 13px;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.header-actions button {
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+}
+
+.graph-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.graph-body {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+.cytoscape-canvas {
+  flex: 1;
+  height: 100%;
+}
+
+.detail-panel {
+  width: 320px;
+  border-left: 1px solid #ddd;
+  padding: 16px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.detail-panel .close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.detail-panel .node-type {
+  text-transform: uppercase;
+  font-size: 11px;
+  color: #888;
+  letter-spacing: 0.05em;
+}
+
+.detail-panel .okta-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.view-in-okta {
+  display: inline-block;
+  margin: 8px 0;
+  color: #4c6fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.view-in-okta-disabled {
+  margin: 8px 0;
+  color: #999;
+  font-size: 13px;
+}
+
+.detail-panel pre {
+  font-size: 11px;
+  background: #f6f6f6;
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  max-height: 300px;
+}
+
+.warnings-banner {
+  border-top: 1px solid #f0d38a;
+  background: #fff8e1;
+  padding: 8px 16px;
+  font-size: 13px;
+}
