@@ -20,6 +20,7 @@ class RiskContext:
     connections_by_agent: dict[str, list[ConnectionDTO]]
     delegations_by_agent: dict[str, list[DelegationLinkDTO]]
     agent_orn_to_id: dict[str, str]
+    users: dict[str, DirectoryObjectDTO]
     groups: dict[str, DirectoryObjectDTO]
     apps: dict[str, DirectoryObjectDTO]
     auth_servers: dict[str, DirectoryObjectDTO]

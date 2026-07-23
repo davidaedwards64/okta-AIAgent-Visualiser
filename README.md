@@ -154,6 +154,12 @@ else in the pipeline changes.
 | Agent using secrets or service accounts | LOW | An agent has a resource connection to a vaulted secret or a service account, which typically carries broader/standing access than a scoped, agent-specific credential. |
 | Inactive Downstream Components | LOW | An agent has a non-A2A resource connection (application, authorization server, secret, service account, resource/MCP server) where the connection or its resolved target is not `ACTIVE`. |
 | No Owners Assigned | LOW | An agent has no owner users and no owner group assigned — no clear accountable party for its access. |
+| Owner No Longer Active | MEDIUM | An agent's owner user account is not `ACTIVE` (deprovisioned, suspended, etc.), so there's no real accountable party behind it anymore. |
+| Shared Secret or Service Account Credential | MEDIUM | Two or more agents share the same vaulted secret or service account credential (same resource indicator) — one leaked credential compromises every agent that uses it. |
+| Overly Broad or Sensitive Scope Grant | HIGH | An agent holds a wildcard (`*`) scope or a scope matching a sensitive-keyword heuristic (`admin`, `manage`, `superuser`, or a trailing `write`) on one of its connections. |
+| Circular Agent Delegation | MEDIUM | An agent sits on a circular chain of active agent-to-agent connections/delegations (A calls B calls ... calls A) — a confused-deputy or runaway-delegation shape. |
+| High Fan-Out (Blast Radius) Agent | LOW | An agent has more than 8 distinct non-A2A downstream resource connections, making it a high-value target if compromised. |
+| Privilege Escalation via Delegation | HIGH | An agent is reachable via an active A2A connection/delegation from a caller that itself lacks one or more of this agent's sensitive scopes — the caller can effectively borrow broader access one hop away. |
 
 Findings are grouped by level then by agent name. Each finding has a **View in graph** link: it
 posts a message back to the graph tab that opened the report (reusing that tab and closing the
@@ -193,8 +199,9 @@ directly — nothing else needs to change, and there's a matching test in
 constants, append a `RiskRule(...)` to `RULES` — that's the whole registration step, by design.
 
 **The one catch**: a new rule can only use data already present on `RiskContext`
-(`backend/app/risk/context.py`) — agents, connections, delegations, groups, apps, auth servers,
-app-group/policy grants, `everyone_group_id`, `org_user_count`, `app_member_user_ids`. If a rule
+(`backend/app/risk/context.py`) — agents, connections, delegations, users, groups, apps, auth
+servers, app-group/policy grants, `everyone_group_id`, `org_user_count`, `app_member_user_ids`. If
+a rule
 needs something not in there (a new Okta object type, a new field), you'd also need to extend
 `_fetch_graph_context` in `backend/app/graph/router.py` (shared by both `/api/graph` and
 `/api/risk-report`) and/or `backend/app/risk/router.py` to fetch and thread it through into
@@ -268,6 +275,20 @@ worth confirming/fixing these:
    if an org has other `BUILT_IN` groups or none at all, the Risk Report's "Everyone → App",
    "Everyone → Policy", and "High % of users" rules will silently skip (with a warning) rather than
    misfire.
+9. **`resource_indicator` presence on `STS_VAULT_SECRET`/`STS_SERVICE_ACCOUNT` connections**
+   (`app/risk/rules.py::_evaluate_shared_credential`) — this is the only identifier available for
+   these two connection types (no `resource_id`, per `ai_agents.py::_parse_connection`), and it's
+   UNCONFIRMED whether Okta actually populates it on a live tenant. If it's absent or org-specific,
+   this rule silently can't prove credential sharing and just won't fire.
+10. **Scope location per connection type** (`app/risk/rules.py::_agent_own_scopes`, used by the
+    "Overly Broad or Sensitive Scope Grant" and "Privilege Escalation via Delegation" rules) —
+    assumes `ConnectionDTO.scopes` is populated the same way across all connection types. Confirm
+    this against a live tenant; the privilege-escalation rule in particular is flagged in its own
+    description as the most speculative of the set.
+11. **Sensitive-scope keyword list and fan-out threshold** (`SENSITIVE_SCOPE_KEYWORDS`,
+    `FANOUT_THRESHOLD` in `app/risk/rules.py`) — both are hardcoded heuristics (`admin`/`manage`/
+    `superuser`/trailing `write`; more than 8 distinct downstream connections), not Okta-defined
+    limits. Tune them to your org's own scope-naming conventions and agent topology.
 
 ## Repo
 

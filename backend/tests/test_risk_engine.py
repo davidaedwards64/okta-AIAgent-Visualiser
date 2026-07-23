@@ -1,13 +1,20 @@
-from app.okta_client.models import AgentDTO, ConnectionDTO, DelegationLinkDTO, PolicyRuleGrantDTO
+from app.okta_client.models import AgentDTO, ConnectionDTO, DelegationLinkDTO, DirectoryObjectDTO, PolicyRuleGrantDTO
 from app.risk.context import RiskContext
 from app.risk.rules import (
+    FANOUT_THRESHOLD,
     RULE_BROKEN_A2A_ID,
+    RULE_DELEGATION_CYCLE_ID,
+    RULE_DELEGATION_PRIVILEGE_ESCALATION_ID,
     RULE_EVERYONE_ON_APP_ID,
     RULE_EVERYONE_ON_POLICY_ID,
+    RULE_HIGH_FANOUT_ID,
     RULE_HIGH_PCT_USERS_ID,
     RULE_INACTIVE_DOWNSTREAM_ID,
+    RULE_INACTIVE_OWNER_ID,
     RULE_NO_OWNERS_ID,
     RULE_SECRETS_OR_SERVICE_ACCOUNTS_ID,
+    RULE_SENSITIVE_SCOPES_ID,
+    RULE_SHARED_CREDENTIAL_ID,
     evaluate_risks,
 )
 
@@ -24,6 +31,7 @@ def make_ctx(**overrides) -> RiskContext:
         connections_by_agent={},
         delegations_by_agent={},
         agent_orn_to_id={},
+        users={},
         groups={},
         apps={},
         auth_servers={},
@@ -234,3 +242,197 @@ def test_owner_present_not_flagged():
     ctx = make_ctx(agents=[agent])
 
     assert ids_for(ctx, RULE_NO_OWNERS_ID) == []
+
+
+def test_inactive_owner_flagged():
+    agent = make_agent(owner_user_ids=["user1"])
+    users = {"user1": DirectoryObjectDTO(id="user1", label="Jane Doe", status="DEPROVISIONED", raw={})}
+    ctx = make_ctx(agents=[agent], users=users)
+
+    assert ids_for(ctx, RULE_INACTIVE_OWNER_ID) == ["wlp1"]
+
+
+def test_active_owner_not_flagged():
+    agent = make_agent(owner_user_ids=["user1"])
+    users = {"user1": DirectoryObjectDTO(id="user1", label="Jane Doe", status="ACTIVE", raw={})}
+    ctx = make_ctx(agents=[agent], users=users)
+
+    assert ids_for(ctx, RULE_INACTIVE_OWNER_ID) == []
+
+
+def test_shared_credential_flagged_for_both_agents():
+    agent_a = make_agent(id="wlp-a", name="Agent A")
+    agent_b = make_agent(id="wlp-b", name="Agent B")
+    conn_a = ConnectionDTO(
+        id="mcn1", agent_id="wlp-a", connection_type="STS_VAULT_SECRET", status="ACTIVE",
+        resource_indicator="vault://shared-secret", raw={},
+    )
+    conn_b = ConnectionDTO(
+        id="mcn2", agent_id="wlp-b", connection_type="STS_SERVICE_ACCOUNT", status="ACTIVE",
+        resource_indicator="vault://shared-secret", raw={},
+    )
+    ctx = make_ctx(agents=[agent_a, agent_b], connections_by_agent={"wlp-a": [conn_a], "wlp-b": [conn_b]})
+
+    assert sorted(ids_for(ctx, RULE_SHARED_CREDENTIAL_ID)) == ["wlp-a", "wlp-b"]
+
+
+def test_distinct_credential_indicators_not_flagged():
+    agent_a = make_agent(id="wlp-a", name="Agent A")
+    agent_b = make_agent(id="wlp-b", name="Agent B")
+    conn_a = ConnectionDTO(
+        id="mcn1", agent_id="wlp-a", connection_type="STS_VAULT_SECRET", status="ACTIVE",
+        resource_indicator="vault://secret-a", raw={},
+    )
+    conn_b = ConnectionDTO(
+        id="mcn2", agent_id="wlp-b", connection_type="STS_SERVICE_ACCOUNT", status="ACTIVE",
+        resource_indicator="vault://secret-b", raw={},
+    )
+    ctx = make_ctx(agents=[agent_a, agent_b], connections_by_agent={"wlp-a": [conn_a], "wlp-b": [conn_b]})
+
+    assert ids_for(ctx, RULE_SHARED_CREDENTIAL_ID) == []
+
+
+def test_sensitive_scope_flagged():
+    agent = make_agent()
+    connection = ConnectionDTO(
+        id="mcn1", agent_id="wlp1", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.manage"], raw={},
+    )
+    ctx = make_ctx(agents=[agent], connections_by_agent={"wlp1": [connection]})
+
+    assert ids_for(ctx, RULE_SENSITIVE_SCOPES_ID) == ["wlp1"]
+
+
+def test_non_sensitive_scope_not_flagged():
+    agent = make_agent()
+    connection = ConnectionDTO(
+        id="mcn1", agent_id="wlp1", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.read"], raw={},
+    )
+    ctx = make_ctx(agents=[agent], connections_by_agent={"wlp1": [connection]})
+
+    assert ids_for(ctx, RULE_SENSITIVE_SCOPES_ID) == []
+
+
+def test_delegation_cycle_flags_every_agent_on_the_loop():
+    agent_a = make_agent(id="wlp-a", name="Agent A")
+    agent_b = make_agent(id="wlp-b", name="Agent B")
+    agent_c = make_agent(id="wlp-c", name="Agent C")
+    conn_a_to_b = ConnectionDTO(
+        id="mcn1", agent_id="wlp-a", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-b", raw={},
+    )
+    conn_b_to_c = ConnectionDTO(
+        id="mcn2", agent_id="wlp-b", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-c", raw={},
+    )
+    conn_c_to_a = ConnectionDTO(
+        id="mcn3", agent_id="wlp-c", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-a", raw={},
+    )
+    ctx = make_ctx(
+        agents=[agent_a, agent_b, agent_c],
+        connections_by_agent={"wlp-a": [conn_a_to_b], "wlp-b": [conn_b_to_c], "wlp-c": [conn_c_to_a]},
+    )
+
+    assert sorted(ids_for(ctx, RULE_DELEGATION_CYCLE_ID)) == ["wlp-a", "wlp-b", "wlp-c"]
+
+
+def test_delegation_chain_without_cycle_not_flagged():
+    agent_a = make_agent(id="wlp-a", name="Agent A")
+    agent_b = make_agent(id="wlp-b", name="Agent B")
+    agent_c = make_agent(id="wlp-c", name="Agent C")
+    conn_a_to_b = ConnectionDTO(
+        id="mcn1", agent_id="wlp-a", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-b", raw={},
+    )
+    conn_b_to_c = ConnectionDTO(
+        id="mcn2", agent_id="wlp-b", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-c", raw={},
+    )
+    ctx = make_ctx(
+        agents=[agent_a, agent_b, agent_c],
+        connections_by_agent={"wlp-a": [conn_a_to_b], "wlp-b": [conn_b_to_c]},
+    )
+
+    assert ids_for(ctx, RULE_DELEGATION_CYCLE_ID) == []
+
+
+def test_high_fanout_flagged_above_threshold():
+    agent = make_agent()
+    connections = [
+        ConnectionDTO(
+            id=f"mcn{i}", agent_id="wlp1", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+            resource_type="APP_INSTANCE", resource_id=f"app{i}", raw={},
+        )
+        for i in range(FANOUT_THRESHOLD + 1)
+    ]
+    ctx = make_ctx(agents=[agent], connections_by_agent={"wlp1": connections})
+
+    assert ids_for(ctx, RULE_HIGH_FANOUT_ID) == ["wlp1"]
+
+
+def test_fanout_at_threshold_not_flagged():
+    agent = make_agent()
+    connections = [
+        ConnectionDTO(
+            id=f"mcn{i}", agent_id="wlp1", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+            resource_type="APP_INSTANCE", resource_id=f"app{i}", raw={},
+        )
+        for i in range(FANOUT_THRESHOLD)
+    ]
+    ctx = make_ctx(agents=[agent], connections_by_agent={"wlp1": connections})
+
+    assert ids_for(ctx, RULE_HIGH_FANOUT_ID) == []
+
+
+def test_delegation_privilege_escalation_flagged_on_callee():
+    caller = make_agent(id="wlp-caller", name="Caller")
+    callee = make_agent(id="wlp-callee", name="Callee")
+    a2a_connection = ConnectionDTO(
+        id="mcn1", agent_id="wlp-caller", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-callee", raw={},
+    )
+    caller_scope_connection = ConnectionDTO(
+        id="mcn2", agent_id="wlp-caller", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.read"], raw={},
+    )
+    callee_scope_connection = ConnectionDTO(
+        id="mcn3", agent_id="wlp-callee", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.manage"], raw={},
+    )
+    ctx = make_ctx(
+        agents=[caller, callee],
+        connections_by_agent={
+            "wlp-caller": [a2a_connection, caller_scope_connection],
+            "wlp-callee": [callee_scope_connection],
+        },
+    )
+
+    assert ids_for(ctx, RULE_DELEGATION_PRIVILEGE_ESCALATION_ID) == ["wlp-callee"]
+
+
+def test_delegation_privilege_escalation_not_flagged_when_caller_has_equal_scopes():
+    caller = make_agent(id="wlp-caller", name="Caller")
+    callee = make_agent(id="wlp-callee", name="Callee")
+    a2a_connection = ConnectionDTO(
+        id="mcn1", agent_id="wlp-caller", connection_type="IDENTITY_ASSERTION_A2A_SERVER",
+        status="ACTIVE", resource_id="wlp-callee", raw={},
+    )
+    caller_scope_connection = ConnectionDTO(
+        id="mcn2", agent_id="wlp-caller", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.manage"], raw={},
+    )
+    callee_scope_connection = ConnectionDTO(
+        id="mcn3", agent_id="wlp-callee", connection_type="STS_ACCESS_TOKEN", status="ACTIVE",
+        scopes=["okta.users.manage"], raw={},
+    )
+    ctx = make_ctx(
+        agents=[caller, callee],
+        connections_by_agent={
+            "wlp-caller": [a2a_connection, caller_scope_connection],
+            "wlp-callee": [callee_scope_connection],
+        },
+    )
+
+    assert ids_for(ctx, RULE_DELEGATION_PRIVILEGE_ESCALATION_ID) == []

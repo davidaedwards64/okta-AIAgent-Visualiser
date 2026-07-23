@@ -97,6 +97,7 @@ async def get_risk_report(session: SessionData = Depends(ensure_valid_token)) ->
         connections_by_agent=ctx.connections_by_agent,
         delegations_by_agent=ctx.delegations_by_agent,
         agent_orn_to_id=ctx.agent_orn_to_id,
+        users=ctx.users,
         groups=ctx.groups,
         apps=ctx.apps,
         auth_servers=ctx.auth_servers,
