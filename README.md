@@ -170,6 +170,38 @@ generated a beat after the graph, not in the same instant. **Regenerate** in the
 re-runs this from scratch; otherwise a report is cached in-memory on the graph tab that opened it,
 so reopening the report (e.g. after "View in graph" sends you back) doesn't re-pay that cost.
 
+### Modifying or adding rules
+
+The rules live in `backend/app/risk/rules.py`:
+
+- A `RiskRule` dataclass (`id`, `name`, `level`, `description`, `evaluate`) — one instance per rule.
+- One `_evaluate_...(ctx: RiskContext) -> list[RiskFinding]` function per rule (e.g.
+  `_evaluate_everyone_on_app`, `_evaluate_broken_a2a`, `_evaluate_no_owners`) — pure logic, no I/O.
+- A block of `RULE_<NAME>_ID` / `_NAME` / `_DESCRIPTION` string constants for each rule.
+- The `RULES: list[RiskRule]` registry at the bottom, wiring each `_evaluate_...` function + its
+  constants into a `RiskRule`.
+- `evaluate_risks(ctx)` just runs every rule in `RULES` and flattens the results.
+
+**To modify an existing rule** (e.g. change the 80% threshold in `_evaluate_high_pct_users`, or
+tweak wording): edit the `_evaluate_...` function and/or its `RULE_..._DESCRIPTION` constant
+directly — nothing else needs to change, and there's a matching test in
+`backend/tests/test_risk_engine.py` to update alongside it.
+
+**To add a new rule**: write a new `_evaluate_...` function, add its `ID`/`NAME`/`DESCRIPTION`
+constants, append a `RiskRule(...)` to `RULES` — that's the whole registration step, by design.
+
+**The one catch**: a new rule can only use data already present on `RiskContext`
+(`backend/app/risk/context.py`) — agents, connections, delegations, groups, apps, auth servers,
+app-group/policy grants, `everyone_group_id`, `org_user_count`, `app_member_user_ids`. If a rule
+needs something not in there (a new Okta object type, a new field), you'd also need to extend
+`_fetch_graph_context` in `backend/app/graph/router.py` (shared by both `/api/graph` and
+`/api/risk-report`) and/or `backend/app/risk/router.py` to fetch and thread it through into
+`RiskContext`.
+
+Frontend needs no changes either way — `RiskReportScreen.tsx` renders `rule_name`/`level`/
+`description`/`detail` generically and groups by level/agent, so any new or modified rule just
+shows up.
+
 ## What v1 deliberately does not do
 
 - **No OPA integration.** Secrets and Service Accounts render as nodes using only the fields
