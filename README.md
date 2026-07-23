@@ -139,6 +139,8 @@ A rule-based governance report over the same graph data, opened in its own brows
 connected) — it's generated on demand, not as part of the main graph load, because one of its
 rules needs an org-wide user count (see below).
 
+![Risk Report](risk-report.png)
+
 Rules are evaluated as pure functions against the fetched graph data (`app/risk/rules.py`); adding
 a new one is just writing another `_evaluate_...` function and appending it to `RULES` — nothing
 else in the pipeline changes.
