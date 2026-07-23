@@ -132,6 +132,44 @@ python -m pytest
 The graph-assembly logic (`app/graph/assemble.py`) is a pure function tested against fixture data
 in `tests/test_assemble.py` — no live org needed for that suite.
 
+## Risk Report
+
+A rule-based governance report over the same graph data, opened in its own browser tab. Click
+**Risk Report** in the header of the graph view (or go to `/?view=risk-report` directly once
+connected) — it's generated on demand, not as part of the main graph load, because one of its
+rules needs an org-wide user count (see below).
+
+Rules are evaluated as pure functions against the fetched graph data (`app/risk/rules.py`); adding
+a new one is just writing another `_evaluate_...` function and appending it to `RULES` — nothing
+else in the pipeline changes.
+
+| Rule | Level | Description |
+| --- | --- | --- |
+| Everyone group assigned to AI Agent App | HIGH | The Okta built-in `Everyone` group is assigned to the application linked to an agent (its sign-on app, or an app it holds an `STS_ACCESS_TOKEN` connection to) — every user in the org can access it. |
+| High %age of Users Assigned to AI Agent | MEDIUM | More than 80% of the org's users are assigned to an application an agent uses, approximated using the `Everyone` group's membership count as the org user-count denominator. |
+| Broken Agent2Agent Connections | MEDIUM | An agent-to-agent (A2A) connection or delegation link is broken — the link itself, or one of the two agents, is not `ACTIVE`. One finding per genuinely-inactive agent, consolidating every affected counterpart (caller or callee) into a single finding rather than one per link. |
+| Everyone group assigned to CAS Access Policy Rule | LOW | The `Everyone` group has a grant on an Access Policy Rule of a custom Authorization Server an agent connects to — every user in the org is covered by that policy rule. |
+| Agent using secrets or service accounts | LOW | An agent has a resource connection to a vaulted secret or a service account, which typically carries broader/standing access than a scoped, agent-specific credential. |
+| Inactive Downstream Components | LOW | An agent has a non-A2A resource connection (application, authorization server, secret, service account, resource/MCP server) where the connection or its resolved target is not `ACTIVE`. |
+| No Owners Assigned | LOW | An agent has no owner users and no owner group assigned — no clear accountable party for its access. |
+
+Findings are grouped by level then by agent name. Each finding has a **View in graph** link: it
+posts a message back to the graph tab that opened the report (reusing that tab and closing the
+report tab, rather than piling up more tabs) and calls `focusOnNode` on the specific agent the
+finding is anchored on — the same agent highlighted in the finding's row, not just "an agent
+involved somewhere in the chain." If the opener tab is gone (closed, or the report URL was opened
+directly), it falls back to navigating to `/?focus=<agentId>` in the current tab instead.
+
+Because the "High %age of Users" rule needs a real org user-count, generating a report does a full
+sweep of the `Everyone` group's membership plus, for every app an agent uses, that app's assigned
+groups' membership — on top of re-running the same agent/connection/delegation/owner fetch the
+main graph does. This is a heavier set of API calls than a normal graph load, so generating a
+report right after loading the graph can trip Okta's per-org rate limit (`429`) if the window
+hasn't recovered yet — the client retries a few times with backoff, but a report is still best
+generated a beat after the graph, not in the same instant. **Regenerate** in the report's header
+re-runs this from scratch; otherwise a report is cached in-memory on the graph tab that opened it,
+so reopening the report (e.g. after "View in graph" sends you back) doesn't re-pay that cost.
+
 ## What v1 deliberately does not do
 
 - **No OPA integration.** Secrets and Service Accounts render as nodes using only the fields
