@@ -2,7 +2,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.auth.dependencies import get_session_store
+from app.auth.dependencies import get_connections_store, get_session_store
 from app.auth.okta_oidc import (
     build_authorize_url,
     discover,
@@ -12,6 +12,8 @@ from app.auth.okta_oidc import (
 )
 from app.auth.pkce import generate_pkce_pair, generate_state
 from app.config import settings
+from app.connections.models import SavedConnectionSummary
+from app.connections.store import ConnectionsStore
 from app.errors import OktaApiError
 from app.session.models import SessionData
 from app.session.store import SessionStore
@@ -21,7 +23,7 @@ router = APIRouter(tags=["auth"])
 
 class LoginRequest(BaseModel):
     org_domain: str
-    client_id: str
+    client_id: str | None = None
     client_secret: str | None = None
 
 
@@ -48,8 +50,20 @@ async def login(
     request: Request,
     response: Response,
     store: SessionStore = Depends(get_session_store),
+    connections_store: ConnectionsStore = Depends(get_connections_store),
 ) -> LoginResponse:
     org_domain = normalize_org_domain(body.org_domain)
+
+    if body.client_id:
+        client_id, client_secret = body.client_id, body.client_secret
+    else:
+        saved = connections_store.get(org_domain)
+        if saved is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No saved connection for this org — provide a Client ID.",
+            )
+        client_id, client_secret = saved.client_id, saved.client_secret
 
     try:
         discovery = await discover(org_domain)
@@ -61,8 +75,8 @@ async def login(
 
     session_data = SessionData(
         org_domain=org_domain,
-        client_id=body.client_id,
-        client_secret=body.client_secret,
+        client_id=client_id,
+        client_secret=client_secret,
         pkce_verifier=verifier,
         state=state,
         authorization_endpoint=discovery["authorization_endpoint"],
@@ -72,7 +86,7 @@ async def login(
 
     authorize_url = build_authorize_url(
         discovery["authorization_endpoint"],
-        body.client_id,
+        client_id,
         _redirect_uri(request),
         state,
         challenge,
@@ -96,6 +110,7 @@ async def callback(
     error: str | None = None,
     session_id: str | None = Cookie(default=None, alias=settings.cookie_name),
     store: SessionStore = Depends(get_session_store),
+    connections_store: ConnectionsStore = Depends(get_connections_store),
 ) -> RedirectResponse:
     if session_id is None:
         return RedirectResponse(f"{settings.frontend_origin}/?error=no_session")
@@ -129,6 +144,10 @@ async def callback(
     data.state = None
     store.update(session_id, data)
 
+    # Credentials just proved they work — remember them so this org doesn't
+    # need the Client ID/Secret retyped next time.
+    connections_store.save(data.org_domain, data.client_id, data.client_secret)
+
     return RedirectResponse(f"{settings.frontend_origin}/")
 
 
@@ -154,4 +173,23 @@ async def logout(
     if session_id is not None:
         store.delete(session_id)
     response.delete_cookie(settings.cookie_name)
+    return {"ok": True}
+
+
+@router.get("/auth/connections", response_model=list[SavedConnectionSummary])
+async def list_connections(
+    connections_store: ConnectionsStore = Depends(get_connections_store),
+) -> list[SavedConnectionSummary]:
+    return [
+        SavedConnectionSummary(org_domain=c.org_domain, client_id=c.client_id)
+        for c in connections_store.list()
+    ]
+
+
+@router.delete("/auth/connections/{org_domain}")
+async def delete_connection(
+    org_domain: str,
+    connections_store: ConnectionsStore = Depends(get_connections_store),
+) -> dict:
+    connections_store.delete(normalize_org_domain(org_domain))
     return {"ok": True}

@@ -13,6 +13,7 @@ dist/
 # Env / secrets
 .env
 .env.*.local
+backend/.data/
 
 # OS / editor
 .DS_Store

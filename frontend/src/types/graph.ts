@@ -12,7 +12,15 @@ export type NodeType =
   | "serviceAccount"
   | "provider";
 
-export type EdgeType = "owner" | "linkedApp" | "connection" | "delegation" | "importedFrom";
+export type EdgeType =
+  | "owner"
+  | "linkedApp"
+  | "connection"
+  | "delegation"
+  | "importedFrom"
+  | "groupAssignment"
+  | "accessPolicy"
+  | "groupMember";
 
 export interface NodeData {
   id: string;
@@ -20,8 +28,10 @@ export interface NodeData {
   label: string;
   status?: string | null;
   sub_label?: string | null;
+  description?: string | null;
   okta_id: string;
   admin_url?: string | null;
+  imported?: boolean;
   raw: Record<string, unknown>;
 }
 
@@ -39,6 +49,7 @@ export interface EdgeData {
   status?: string | null;
   scope_condition?: string | null;
   scopes: string[];
+  rule_summaries: string[];
   raw: Record<string, unknown>;
 }
 
@@ -53,3 +64,7 @@ export interface GraphResponse {
   edges: GraphEdge[];
   warnings: string[];
 }
+
+// The detail panel can show either a node or an edge — this is what
+// CytoscapeCanvas reports back via its onSelect callback.
+export type Selection = { kind: "node"; data: NodeData } | { kind: "edge"; data: EdgeData };

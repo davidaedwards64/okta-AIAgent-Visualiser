@@ -25,6 +25,65 @@ body {
   gap: 12px;
 }
 
+.org-connect-manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.org-connect-manual-form h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.saved-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.saved-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.saved-connection-domain {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.saved-connection-client-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.saved-connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saved-connection-actions button[type="button"]:not(.link-button) {
+  padding: 6px 12px;
+  background: #4c6fff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saved-connection-actions button[type="button"]:not(.link-button):disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .org-connect-form label {
   display: flex;
   flex-direction: column;
@@ -95,6 +154,15 @@ body {
   font-size: 13px;
 }
 
+.group-members-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #444;
+  cursor: pointer;
+}
+
 .header-actions {
   margin-left: auto;
   display: flex;
@@ -124,7 +192,24 @@ body {
 
 .cytoscape-canvas {
   flex: 1;
+  min-width: 0; /* otherwise this flex item won't shrink below cytoscape's
+                   internal canvas pixel size, pushing the detail panel
+                   sibling off-screen once it appears */
   height: 100%;
+}
+
+.refresh-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: #1a1a1a;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .detail-panel {
@@ -172,6 +257,35 @@ body {
   font-size: 13px;
 }
 
+.rule-summaries {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.rule-summaries li {
+  margin-bottom: 4px;
+}
+
+.owners-heading {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+}
+
+.owners-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.owners-list li {
+  margin-bottom: 2px;
+}
+
 .detail-panel pre {
   font-size: 11px;
   background: #f6f6f6;
@@ -181,9 +295,250 @@ body {
   max-height: 300px;
 }
 
+.search-box {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 260px;
+  z-index: 1;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.search-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.search-results button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-results button:hover {
+  background: #f2f4ff;
+}
+
+.search-result-type {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.legend-title {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px #ddd;
+}
+
+.legend-title-edges {
+  margin-top: 10px;
+}
+
+.legend-edge-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  flex-shrink: 0;
+  border-top-width: 2px;
+}
+
 .warnings-banner {
   border-top: 1px solid #f0d38a;
   background: #fff8e1;
   padding: 8px 16px;
   font-size: 13px;
+}
+
+.risk-report-screen {
+  min-height: 100vh;
+}
+
+.risk-report-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.risk-report-actions button {
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+}
+
+.risk-report-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.risk-report-generated-at {
+  color: #666;
+  font-size: 13px;
+}
+
+.risk-report-body {
+  padding: 16px 24px;
+  max-width: 900px;
+}
+
+.risk-level-section {
+  margin-bottom: 24px;
+}
+
+.risk-level-heading {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 4px;
+  border-bottom: 2px solid currentColor;
+}
+
+.risk-level-high {
+  color: #c0392b;
+}
+
+.risk-level-medium {
+  color: #b7791f;
+}
+
+.risk-level-low {
+  color: #4c6fff;
+}
+
+.risk-agent-group {
+  margin: 12px 0;
+}
+
+.risk-agent-name {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.risk-finding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.risk-finding {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.risk-finding-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.risk-level-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: white;
+}
+
+.risk-level-badge.risk-level-high {
+  background: #c0392b;
+}
+
+.risk-level-badge.risk-level-medium {
+  background: #b7791f;
+}
+
+.risk-level-badge.risk-level-low {
+  background: #4c6fff;
+}
+
+.risk-rule-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.risk-view-in-graph {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #4c6fff;
+  font-size: 13px;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.risk-description {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: #444;
+}
+
+.risk-detail {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
 }

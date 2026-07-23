@@ -56,6 +56,25 @@ class ProviderDTO(BaseModel):
     id: str
     source_name: str
     source_orn: str | None = None
+    # Best-effort, extracted from source_orn (see ai_agents._extract_linked_app_id).
+    # When resolved, its Application.label is preferred over source_name for
+    # the provider node's display label (source_name is only the generic OIN
+    # catalog key, e.g. "amazon_aws_sso", shared by every org using that IdP type).
+    linked_app_id: str | None = None
+    raw: dict
+
+
+class PolicyRuleGrantDTO(BaseModel):
+    """A single Access Policy Rule match that grants a group access to a
+    custom Authorization Server — one per matching rule, so the graph can
+    show *why* a group->AuthorizationServer accessPolicy edge exists, not
+    just that it does."""
+
+    policy_name: str | None = None
+    rule_name: str | None = None
+    rule_status: str | None = None
+    grant_types: list[str] = []
+    scopes: list[str] = []
     raw: dict
 
 

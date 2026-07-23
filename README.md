@@ -11,6 +11,8 @@ delegations.
   page in the real Admin Console, in a new tab.
 - Connect to any Okta org you're a super admin on — no fixed org or API token baked into the app.
 
+![Graph overview](overview.png)
+
 ## Architecture
 
 - **Backend**: Python + FastAPI. Handles login (Authorization Code + PKCE against the org you
@@ -22,6 +24,54 @@ delegations.
 - Vite's dev server proxies `/api`, `/auth`, and `/callback` to the backend, so the browser only
   ever sees one origin (`http://localhost:5173`) — this is what avoids CORS/Trusted-Origin
   headaches, not a permissive CORS config.
+
+```
+        ┌───────────────────────────────────────────────────────────────────┐
+        │ Browser  (http://localhost:5173)                                  │
+        │                                                                   │
+        │ React SPA (Vite + TypeScript)                                     │
+        │   OrgConnectScreen                                                │
+        │   GraphScreen                                                     │
+        │     Header / SearchBox / Legend                                   │
+        │     CytoscapeCanvas  (layout, highlight, tap + context menu)      │
+        │     DetailPanel      (node & edge details, "Open in Okta")        │
+        └───────────────────────────────────────────────────────────────────┘
+         │
+         │  fetch /api/*  /auth/*  /callback
+         │  (Vite dev-server proxy -> single origin, no CORS needed)
+         ▼
+        ┌───────────────────────────────────────────────────────────────────┐
+        │ FastAPI backend  (http://localhost:8000)                          │
+        │                                                                   │
+        │ app/auth/             PKCE login, callback, session cookie        │
+        │ session/store.py      in-memory, keyed by session cookie          │
+        │ connections/store.py  backend/.data/connections.json (gitignored) │
+        │                                                                   │
+        │ app/graph/router.py    GET /api/graph, /api/groups/{id}/members   │
+        │ app/graph/assemble.py  pure fn: DTOs in -> nodes/edges out        │
+        │ app/okta_client/       ai_agents.py, directory.py, base.py (httpx)│
+        └───────────────────────────────────────────────────────────────────┘
+         │
+         │  Bearer <org access token>
+         ▼
+        ┌───────────────────────────────────────────────────────────────────┐
+        │ Your Okta org  (the org_domain you connect to)                    │
+        │                                                                   │
+        │ Identity / OAuth          /oauth2/v1/authorize, /token            │
+        │ Core Management API       /api/v1/users, groups, apps,            │
+        │                           authorizationServers                    │
+        │ Workload Principals API   /workload-principals/api/v1/...         │
+        └───────────────────────────────────────────────────────────────────┘
+         │
+         │  "Open in Okta" deep links only (Secret nodes only --
+         │  Service Account has no working link, see checklist)
+         ▼
+        ┌───────────────────────────────────────────────────────────────────┐
+        │ Okta Privileged Access (OPA)                                      │
+        │ separate product/domain -- never called by the backend,           │
+        │ only linked to from the browser                                   │
+        └───────────────────────────────────────────────────────────────────┘
+```
 
 ## Prerequisites
 
@@ -51,23 +101,25 @@ In the Admin Console of the org you want to visualize:
 
 ## Running locally
 
-Two terminals:
+Two terminals, from the repo root:
 
 ```bash
 # Terminal 1 — backend
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8000
+./back-start.sh
 
 # Terminal 2 — frontend
-cd frontend
-npm install
-npm run dev
+./front-start.sh
 ```
 
+Each script creates its virtualenv/`node_modules` on first run (if missing) and installs
+dependencies before starting its server.
+
 Open `http://localhost:5173`, enter your org domain and the Client ID (and secret, if any) from
-above, and connect.
+above, and connect. This redirects to that org's own hosted Okta login page — you authenticate as
+yourself (the admin), not as the app; the Client ID/Secret only identify the registered app, not
+who's calling the API. On a successful connect, the org + Client ID/Secret are saved to
+`backend/.data/connections.json` (gitignored) so next time you can just click Connect next to the
+saved org instead of retyping everything.
 
 ## Running the backend tests
 
@@ -101,27 +153,49 @@ defensively (the app degrades gracefully — omits the edge/link, logs a warning
 guessing and asserting something false). Once you have this running against your test org, it's
 worth confirming/fixing these:
 
-1. **Owner field shape** on the AI Agent object (`app/okta_client/ai_agents.py::_extract_owners`).
-   If your org's agents have owners but they don't show up as edges in the graph, check the
-   `warnings` list returned by `/api/graph` and adjust the parsing there.
-2. **Resource Server / MCP Server API paths and scopes**
-   (`app/okta_client/resource_servers.py`, `app/okta_client/mcp_servers.py`). These currently guess
-   `/api/v1/resource-servers/{id}` and `/api/v1/mcp-servers/{id}` and fail soft if wrong — check
-   the `warnings` list, and update the base path/required scope once you've confirmed the real one
-   (e.g. via your org's actual OpenAPI reference or by watching network requests in the Admin
-   Console).
-3. **Admin Console URL patterns** for AI Agents, Resource Servers, and MCP Servers
-   (`app/graph/deeplinks.py::build_admin_url`). These three intentionally return `None` today (the
-   "Open in Okta" item shows disabled for these node types) because there's no confirmed URL
-   pattern for this new beta UI. Navigate to one of each in your Admin Console, copy the URL
-   pattern from the address bar, and fill these in.
-4. **Application deep link's app-type key** — the link builder assumes `GET /api/v1/apps/{id}`'s
+1. ~~Owner field shape~~ — **confirmed live**: the AI Agent object itself has no `owners` field at
+   all (`_extract_owners` is a defensive no-op fallback); the Admin Console's "Owners" tab is
+   actually backed by a different API family entirely — the Governance API
+   (`GET /governance/api/v1/resource-owners?filter=parentResourceOrn eq "{agent orn}"`), found by
+   inspecting the Admin Console's own Network tab. See `app/okta_client/ai_agents.py::get_agent_owners`.
+2. ~~Resource Server / MCP Server API paths~~ — **confirmed dead** against a live tenant: the
+   guessed `/api/v1/resource-servers/{id}` and `/api/v1/mcp-servers/{id}` both return 405. There is
+   no working by-id lookup for these two; `app/graph/assemble.py` now builds their nodes entirely
+   from the `resource` object already embedded in the AI Agent connection payload (confirmed to
+   carry `name`, plus `resourceUrl`/`endpointUrl`) instead. `app/okta_client/resource_servers.py`
+   and `mcp_servers.py` were removed as dead code.
+3. ~~Admin Console URL patterns~~ for AI Agent (`/admin/workload-principals/ai-agents/{id}/profile`),
+   Resource Server (`/admin/directory/resource-servers/{id}/edit`), and MCP Server
+   (`/admin/directory/mcp-servers/{id}/edit`) — **confirmed live**, wired into
+   `app/graph/deeplinks.py::build_admin_url`. Secret is different: the connection's embedded
+   `secret._links.web.href` is already a full, correct URL into the OPA console (a different
+   product/domain), so it's used directly rather than derived from `_admin_host` — **confirmed
+   live**. Service Account's equivalent embedded link (`serviceAccount._links.web.href`) is
+   **confirmed live to be dead** (404 — `/t/{tenant}/saas_apps/{appId}/service_accounts/{id}`); the
+   real OPA console URL needs a `resourceGroupId`/`projectId` that never appears in the AI Agent
+   connection payload, and fetching those would require a second OAuth login scoped to the OPA API
+   (a separate product from core Okta Management API) — deliberately not pursued for this minor
+   case, so Service Account nodes have no deep link. Still unconfirmed: Provider.
+4. ~~Service Account connection shape~~ — label extraction **confirmed live**, identical to
+   `STS_VAULT_SECRET`: an embedded `serviceAccount` object with `name`. Its `_links.web.href` is
+   confirmed dead — see item 3.
+5. **Application deep link's app-type key** — the link builder assumes `GET /api/v1/apps/{id}`'s
    `name` field supplies the catalog key the Admin Console URL needs (e.g. `oidc_client`). Confirm
    this holds for both OIN app instances and any custom app types in your org.
-5. **Custom-domain orgs** — the admin-console-host derivation
+6. **Custom-domain orgs** — the admin-console-host derivation
    (`app/graph/deeplinks.py::_admin_host`) assumes the org domain you enter is its native
    `*.okta.com`/`*.oktapreview.com` domain. If your org uses a vanity custom domain, that
    derivation needs a different approach.
+7. **`_is_inactive` status heuristic** (`app/risk/rules.py`) — treats any status other than
+   `ACTIVE`/`UNKNOWN`/`None` as inactive for the Risk Report's "Broken A2A" and "Inactive
+   Downstream" rules. Confirm this matches the actual status values Okta returns for agents, apps,
+   auth servers, and connections in your org (e.g. `SUSPENDED`, `DEPROVISIONED`, `INACTIVE`).
+8. **Everyone group lookup's `BUILT_IN` filter** (`app/okta_client/directory.py::find_everyone_group`)
+   — assumes `GET /api/v1/groups?filter=type eq "BUILT_IN"&limit=1` uniquely and reliably returns
+   the org's built-in Everyone group as the first (only) result. Confirm this against a live tenant;
+   if an org has other `BUILT_IN` groups or none at all, the Risk Report's "Everyone → App",
+   "Everyone → Policy", and "High % of users" rules will silently skip (with a warning) rather than
+   misfire.
 
 ## Repo
 

@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.router import router as auth_router
 from app.config import settings
+from app.connections.store import ConnectionsStore
 from app.graph.router import router as graph_router
+from app.risk.router import router as risk_router
 from app.session.store import InMemorySessionStore
 
 
@@ -22,9 +24,11 @@ def create_app() -> FastAPI:
     )
 
     app.state.session_store = InMemorySessionStore()
+    app.state.connections_store = ConnectionsStore()
 
     app.include_router(auth_router)
     app.include_router(graph_router)
+    app.include_router(risk_router)
 
     @app.get("/health")
     async def health() -> dict:

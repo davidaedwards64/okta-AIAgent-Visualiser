@@ -19,7 +19,16 @@ NodeType = Literal[
     "provider",
 ]
 
-EdgeType = Literal["owner", "linkedApp", "connection", "delegation", "importedFrom"]
+EdgeType = Literal[
+    "owner",
+    "linkedApp",
+    "connection",
+    "delegation",
+    "importedFrom",
+    "groupAssignment",
+    "accessPolicy",
+    "groupMember",
+]
 
 
 class NodeData(BaseModel):
@@ -28,8 +37,10 @@ class NodeData(BaseModel):
     label: str
     status: str | None = None
     sub_label: str | None = None
+    description: str | None = None
     okta_id: str
     admin_url: str | None = None  # null when the deep-link pattern isn't confirmed yet for this type
+    imported: bool = False  # agent-only: true when it has a provider_id (imported, not created in Okta)
     raw: dict[str, Any] = {}
 
 
@@ -47,6 +58,7 @@ class EdgeData(BaseModel):
     status: str | None = None
     scope_condition: str | None = None
     scopes: list[str] = []
+    rule_summaries: list[str] = []  # accessPolicy-only: one line per matching Access Policy Rule
     raw: dict[str, Any] = {}
 
 

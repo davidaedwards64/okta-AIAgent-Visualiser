@@ -1,12 +1,12 @@
 """Per-type "Open in Okta" Admin Console URL builder.
 
 Patterns for user/group/application/authorizationServer are Okta's
-longstanding, documented Admin Console conventions. Patterns for
-agent/resourceServer/mcpServer are genuinely new (beta) UI with nothing
-documented anywhere checked during planning — those three deliberately
-return None so the frontend can render "Open in Okta" disabled rather than
-linking to a guessed, possibly-wrong URL. See README "Verify-live checklist"
-item 3: hand-navigate the real Admin Console once and fill these in.
+longstanding, documented Admin Console conventions. The patterns for
+agent/resourceServer/mcpServer were confirmed against a live tenant (see
+README "Verify-live checklist"). secret/serviceAccount/provider are still
+genuinely new (beta) UI with nothing confirmed yet — those deliberately
+return None so the frontend renders "Open in Okta" disabled rather than
+linking to a guessed, possibly-wrong URL.
 """
 
 from app.graph.contract import NodeType
@@ -42,7 +42,12 @@ def build_admin_url(
         return f"https://{host}/admin/app/{key}/instance/{okta_id}#tab-general"
     if node_type == "authorizationServer":
         return f"https://{host}/admin/oauth2/as/{okta_id}"
+    if node_type == "agent":
+        return f"https://{host}/admin/workload-principals/ai-agents/{okta_id}/profile"
+    if node_type == "resourceServer":
+        return f"https://{host}/admin/directory/resource-servers/{okta_id}/edit"
+    if node_type == "mcpServer":
+        return f"https://{host}/admin/directory/mcp-servers/{okta_id}/edit"
 
-    # agent, resourceServer, mcpServer, secret, serviceAccount, provider:
-    # no confirmed Admin Console URL pattern yet.
+    # secret, serviceAccount, provider: no confirmed Admin Console URL pattern yet.
     return None

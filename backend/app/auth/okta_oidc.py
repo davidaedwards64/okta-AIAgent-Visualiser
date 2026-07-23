@@ -8,10 +8,14 @@ from app.errors import OktaApiError
 # okta.resourceServers.* / okta.mcpServers.* deliberately omitted: unconfirmed
 # scope names for the beta Resource Servers / MCP Servers API surface. See
 # README "Verify-live checklist" before adding them.
+# okta.governance.resourceOwner.read is for the Identity Governance API
+# (a separate product surface from core Okta Management), needed for the
+# AI Agent "Owners" tab data — see app/okta_client/ai_agents.py::get_agent_owners.
 SCOPES = (
     "openid profile offline_access "
     "okta.users.read okta.groups.read okta.apps.read "
-    "okta.authorizationServers.read okta.aiAgents.read"
+    "okta.authorizationServers.read okta.aiAgents.read "
+    "okta.governance.resourceOwner.read"
 )
 
 

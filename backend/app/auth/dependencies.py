@@ -4,6 +4,7 @@ from fastapi import Cookie, Depends, HTTPException, Request
 
 from app.auth.okta_oidc import refresh_access_token, token_response_to_expiry
 from app.config import settings
+from app.connections.store import ConnectionsStore
 from app.session.models import SessionData
 from app.session.store import SessionStore
 
@@ -12,6 +13,10 @@ REFRESH_SKEW = timedelta(minutes=2)
 
 def get_session_store(request: Request) -> SessionStore:
     return request.app.state.session_store
+
+
+def get_connections_store(request: Request) -> ConnectionsStore:
+    return request.app.state.connections_store
 
 
 async def get_session_data(
